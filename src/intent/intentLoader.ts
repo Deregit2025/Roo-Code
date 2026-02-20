@@ -5,13 +5,16 @@ import * as fs from 'fs';
 import * as path from 'path';
 import yaml from 'js-yaml';
 import { logger } from '../utils/logger';
+import { IntentStatus, VALID_STATUSES } from '../core/intentStatusManager';
 
 export interface Intent {
     id: string;
     description: string;
+    status: IntentStatus;
     owned_scope: string[];
     constraints: Record<string, any>;
-    acceptance_criteria?: string[];
+    acceptance_criteria: string[];
+    spec_ref?: string;
 }
 
 export interface ActiveIntentsFile {
@@ -20,15 +23,13 @@ export interface ActiveIntentsFile {
 }
 
 /**
- * IntentLoader reads and parses the active_intents.yaml file,
- * providing structured access to all declared intents.
+ * IntentLoader reads and parses active_intents.yaml, providing structured
+ * access to all declared intents with full status validation.
  */
 export class IntentLoader {
     /**
      * Loads all intents from the given YAML file path.
-     * @param filePath Relative or absolute path to active_intents.yaml
-     * @returns Array of Intent objects
-     * @throws Error if the file cannot be read or parsed
+     * Validates status fields and defaults missing ones to PENDING.
      */
     async loadIntents(filePath: string): Promise<Intent[]> {
         const absolutePath = path.resolve(filePath);
@@ -44,31 +45,64 @@ export class IntentLoader {
             throw new Error(`Invalid intent file format in: ${absolutePath}`);
         }
 
-        logger.info(`[IntentLoader] Loaded ${parsed.intents.length} intents from ${filePath}`);
-        return parsed.intents;
+        const intents = parsed.intents.map((intent) => {
+            // Validate and normalise status
+            const status: IntentStatus = VALID_STATUSES.includes(intent.status as IntentStatus)
+                ? (intent.status as IntentStatus)
+                : 'PENDING';
+
+            if (intent.status && !VALID_STATUSES.includes(intent.status as IntentStatus)) {
+                logger.warn(
+                    `[IntentLoader] Intent "${intent.id}" has unknown status "${intent.status}". Defaulting to PENDING.`
+                );
+            }
+
+            return { ...intent, status };
+        });
+
+        logger.info(`[IntentLoader] Loaded ${intents.length} intents from ${filePath}`);
+        return intents;
     }
 
     /**
      * Loads a single intent by ID.
-     * @param filePath Path to active_intents.yaml
-     * @param intentId Intent ID to find
+     * @throws if not found or if the file cannot be read
      */
     async loadIntent(filePath: string, intentId: string): Promise<Intent> {
         const intents = await this.loadIntents(filePath);
         const found = intents.find((i) => i.id === intentId);
+
         if (!found) {
-            throw new Error(`Intent "${intentId}" not found in ${filePath}`);
+            const available = intents
+                .filter((i) => i.status === 'PENDING' || i.status === 'IN_PROGRESS')
+                .map((i) => `${i.id} (${i.status})`)
+                .join(', ');
+
+            throw new Error(
+                `Intent "${intentId}" not found in ${filePath}.\n` +
+                `  Available PENDING/IN_PROGRESS intents: ${available || '(none)'}\n` +
+                `  Tip: choose one of the IDs above and call select_active_intent().`
+            );
         }
+
         return found;
     }
 
     /**
-     * Returns the currently active intent ID from the YAML file.
+     * Returns the currently active intent ID declared in the YAML file.
      */
     async getActiveIntentId(filePath: string): Promise<string> {
         const absolutePath = path.resolve(filePath);
         const raw = fs.readFileSync(absolutePath, 'utf-8');
         const parsed = yaml.load(raw) as ActiveIntentsFile;
         return parsed?.active_intent ?? '';
+    }
+
+    /**
+     * Returns only intents with PENDING or IN_PROGRESS status.
+     */
+    async getWorkableIntents(filePath: string): Promise<Intent[]> {
+        const all = await this.loadIntents(filePath);
+        return all.filter((i) => i.status === 'PENDING' || i.status === 'IN_PROGRESS');
     }
 }
