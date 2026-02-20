@@ -1,75 +1,40 @@
-import { v4 as uuidv4 } from 'uuid';
-import { Logger } from '../utils/logger';
-import { TraceLogger } from '../trace/traceLogger';
+// src/utils/logger.ts
+// Shared logger utility for the orchestration pipeline
 
-export type PromptContext = {
-  sessionId?: string;
-  user?: string;
-  previousActions?: any[];
-  [key: string]: any;
-};
+export interface ILogger {
+  info(message: string, ...args: any[]): void;
+  warn(message: string, ...args: any[]): void;
+  error(message: string, ...args: any[]): void;
+  debug(message: string, ...args: any[]): void;
+}
 
-export type AgentPrompt = {
-  id: string;
-  intent: string;
-  context: PromptContext;
-  timestamp: string;
-  promptText: string;
-};
+class ConsoleLogger implements ILogger {
+  private prefix: string;
 
-export class PromptBuilder {
-  private traceLogger: TraceLogger;
-
-  constructor() {
-    this.traceLogger = new TraceLogger();
+  constructor(prefix = '[Roo-Orchestration]') {
+    this.prefix = prefix;
   }
 
-  /**
-   * Build a structured prompt from an intent
-   * @param intent The user intent
-   * @param context Optional additional context
-   * @returns AgentPrompt object
-   */
-  buildPrompt(intent: string, context: PromptContext = {}): AgentPrompt {
-    const sessionId = context.sessionId || uuidv4();
-    const timestamp = new Date().toISOString();
-
-    // Compose the natural language prompt
-    const promptText = this.composePromptText(intent, context);
-
-    const agentPrompt: AgentPrompt = {
-      id: sessionId,
-      intent,
-      context: { ...context, sessionId },
-      timestamp,
-      promptText,
-    };
-
-    // Log to trace
-    this.traceLogger.logPrompt(agentPrompt);
-
-    Logger.info(`Prompt built for intent: ${intent}`);
-    return agentPrompt;
+  info(message: string, ...args: any[]): void {
+    console.log(`${this.prefix} [INFO]`, message, ...args);
   }
 
-  /**
-   * Compose the actual prompt text
-   */
-  private composePromptText(intent: string, context: PromptContext): string {
-    let basePrompt = `Intent: ${intent}\n`;
+  warn(message: string, ...args: any[]): void {
+    console.warn(`${this.prefix} [WARN]`, message, ...args);
+  }
 
-    if (context.previousActions && context.previousActions.length > 0) {
-      basePrompt += 'Previous Actions:\n';
-      context.previousActions.forEach((action, idx) => {
-        basePrompt += `${idx + 1}. ${JSON.stringify(action)}\n`;
-      });
+  error(message: string, ...args: any[]): void {
+    console.error(`${this.prefix} [ERROR]`, message, ...args);
+  }
+
+  debug(message: string, ...args: any[]): void {
+    if (process.env.DEBUG) {
+      console.debug(`${this.prefix} [DEBUG]`, message, ...args);
     }
-
-    // Include optional metadata for agents/tools
-    if (context.user) {
-      basePrompt += `User: ${context.user}\n`;
-    }
-
-    return basePrompt.trim();
   }
 }
+
+/**
+ * Singleton logger instance shared across the orchestration pipeline
+ */
+export const logger: ILogger = new ConsoleLogger();
