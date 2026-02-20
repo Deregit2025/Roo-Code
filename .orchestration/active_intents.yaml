@@ -3,15 +3,57 @@ active_intent: INT-001
 intents:
   - id: INT-001
     description: "Create User API"
+    status: IN_PROGRESS
     owned_scope:
       - "src/auth/**"
       - "src/middleware/**"
     constraints:
       requires_approval: true
+      max_file_changes: 10
+      allowed_tools:
+        - write_file
+        - run_tests
+        - read_file
+    acceptance_criteria:
+      - "POST /users returns 201 with user object"
+      - "Input validation rejects empty email with 400"
+      - "Password hashed with bcrypt before storage"
+      - "Unit tests cover happy path and edge cases"
+    spec_ref: ".specify/user_api.md"
 
   - id: INT-002
     description: "Implement Login Flow"
+    status: PENDING
     owned_scope:
       - "src/auth/login/**"
+      - "src/auth/jwt/**"
     constraints:
       requires_approval: true
+      max_file_changes: 6
+      allowed_tools:
+        - write_file
+        - run_tests
+    acceptance_criteria:
+      - "POST /login returns signed JWT on success"
+      - "Returns 401 for invalid credentials"
+      - "JWT expires after 24 hours"
+      - "Refresh token stored in HttpOnly cookie"
+    spec_ref: ".specify/auth.md"
+
+  - id: INT-003
+    description: "Refactor UI Components"
+    status: COMPLETED
+    owned_scope:
+      - "src/ui/**"
+      - "webview-ui/src/components/**"
+    constraints:
+      requires_approval: false
+      max_file_changes: 20
+      allowed_tools:
+        - write_file
+        - read_file
+    acceptance_criteria:
+      - "All components use shared design tokens"
+      - "No inline styles remain in any component"
+      - "Storybook stories updated for all changed components"
+    spec_ref: ".specify/ui.md"
