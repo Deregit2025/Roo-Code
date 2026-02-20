@@ -1,63 +1,53 @@
 // src/hooks/preToolUse.ts
-import { HookContext, ToolEvent } from './hookEngine';
-import { loadActiveIntent } from './intentLoader';
+import { PromptBuilder, PromptContext } from '../core/promptBuilder';
+import { IntentLoader } from '../intent/intentLoader';
 
-export type PreToolUseResult = {
-  allowed: boolean;
-  reason?: string;
+export type IntentContext = {
+  id: string;
+  name: string;
+  owned_scope: string[];
+  constraints: string[];
+  acceptance_criteria: string[];
+};
+
+export type HookContext = {
+  activeIntent?: IntentContext;
+  promptBuilder: PromptBuilder;
+  workspaceRoot: string;
+  allowedPaths: string[];
+  addFeedback: (msg: string) => void;
 };
 
 /**
  * PreToolUse hook
- * Validates tool commands before execution.
- * - Classifies commands as Safe or Destructive
- * - Blocks unsafe commands
- * - Intercepts select_active_intent tool to inject intent context
+ * - Intercepts the tool execution BEFORE the agent runs
+ * - Ensures the agent calls select_active_intent
+ * - Injects context from active_intents.yaml using js-yaml via IntentLoader
  */
-export async function preToolUse(
-  event: ToolEvent,
-  context: HookContext
-): Promise<PreToolUseResult> {
-  const { type, payload } = event;
+export async function preToolUse(intentId: string, context: HookContext): Promise<string> {
+  const activeIntentsPath = `${context.workspaceRoot}/.orchestration/active_intents.yaml`;
 
-  // --- NEW SECTION: Handle select_active_intent ---
-  if (type === 'select_active_intent') {
-    const activeIntent = loadActiveIntent(context);
-    if (!activeIntent) {
-      return {
-        allowed: false,
-        reason: 'Failed to load active intent from .orchestration/active_intents.yaml',
-      };
-    }
+  const loader = new IntentLoader();
+  let activeIntentContext: IntentContext;
 
-    // Inject the active intent into agent context
-    context.activeIntent = activeIntent;
-    context.addFeedback(`Active intent ${activeIntent.id} injected successfully`);
+  try {
+    const intent = await loader.loadIntent(activeIntentsPath, intentId);
 
-    return { allowed: true };
-  }
-
-  // --- EXISTING LOGIC: classify destructive commands ---
-  const destructiveCommands = ['rm -rf', 'git push --force', 'sudo', 'mv /', 'del /F /Q'];
-  const commandStr = payload?.command?.toString() || '';
-  const isDestructive = destructiveCommands.some((cmd) => commandStr.includes(cmd));
-
-  if (isDestructive) {
-    return {
-      allowed: false,
-      reason: `Command blocked by PreToolUse: "${commandStr}" classified as destructive`,
+    activeIntentContext = {
+      id: intent.id,
+      name: intent.description,
+      owned_scope: intent.owned_scope,
+      constraints: Object.keys(intent.constraints),
+      acceptance_criteria: intent.acceptance_criteria || [],
     };
+
+    context.activeIntent = activeIntentContext;
+  } catch (error: any) {
+    context.addFeedback(`PreToolUse error: ${error.message}`);
+    throw error;
   }
 
-  // --- EXISTING LOGIC: optional whitelist ---
-  const safeCommands = ['read_file', 'write_file', 'ls', 'echo', 'mkdir'];
-  if (!safeCommands.includes(type) && !type.startsWith('customTool')) {
-    return {
-      allowed: false,
-      reason: `Command "${type}" not recognized as safe`,
-    };
-  }
-
-  // Passed all checks
-  return { allowed: true };
+  // Build system prompt using PromptBuilder
+  const agentPrompt = context.promptBuilder.buildPrompt(intentId, activeIntentContext);
+  return agentPrompt.promptText;
 }
