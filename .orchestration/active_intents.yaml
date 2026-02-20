@@ -1,21 +1,17 @@
-# .orchestration/active_intents.yaml
-active_intent: REQ-1
+active_intent: INT-001
 
 intents:
-  - id: REQ-1
-    description: "Implement reasoning loop initialization"
-    scope:
-      - "src/hooks/*"
-      - "src/intent/*"
+  - id: INT-001
+    description: "Create User API"
+    owned_scope:
+      - "src/auth/**"
+      - "src/middleware/**"
     constraints:
-      max_runtime: 60
       requires_approval: true
 
-  - id: REQ-2
-    description: "Add code scaffolding for new agent tools"
-    scope:
-      - "src/tools/*"
-      - "src/orchestration/*"
+  - id: INT-002
+    description: "Implement Login Flow"
+    owned_scope:
+      - "src/auth/login/**"
     constraints:
-      max_runtime: 120
-      requires_approval: false
+      requires_approval: true
