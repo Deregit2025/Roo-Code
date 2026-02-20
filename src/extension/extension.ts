@@ -1,3 +1,4 @@
+// src/extension/extension.ts
 import * as vscode from 'vscode';
 import { HookEngine } from '../hooks/hookEngine';
 import { OrchestrationManager } from '../orchestration/orchestrationManager';
@@ -13,7 +14,9 @@ export function activate(context: vscode.ExtensionContext) {
     // Initialize core components
     mcpClient = new MCPClient();
     orchestrationManager = new OrchestrationManager(context);
-    hookEngine = new HookEngine(context, orchestrationManager);
+
+    // HookEngine takes no constructor arguments — wiring is done at call time
+    hookEngine = new HookEngine();
 
     // Register main command to start the agent workflow
     const disposable = vscode.commands.registerCommand('agentic.startSession', async () => {
